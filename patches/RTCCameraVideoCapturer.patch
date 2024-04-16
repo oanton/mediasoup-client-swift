@@ -1,0 +1,80 @@
+--- webrtc/src/sdk/objc/components/capturer/RTCCameraVideoCapturer.m
++++ webrtc/src/sdk/objc/components/capturer/RTCCameraVideoCapturer.m
+@@ -75,7 +75,7 @@ const int64_t kNanosecondsPerSecond = 1000000000;
+     }
+     NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+ #if TARGET_OS_IPHONE
+-    _orientation = UIDeviceOrientationPortrait;
++    _orientation = [self getThreadSafeOrientation];
+     _rotation = RTCVideoRotation_90;
+     [center addObserver:self
+                selector:@selector(deviceOrientationDidChange:)
+@@ -523,8 +523,67 @@ const int64_t kNanosecondsPerSecond = 1000000000;
+   NSAssert([RTC_OBJC_TYPE(RTCDispatcher) isOnQueueForType:RTCDispatcherTypeCaptureSession],
+            @"updateOrientation must be called on the capture queue.");
+ #if TARGET_OS_IPHONE
+-  _orientation = [UIDevice currentDevice].orientation;
++  _orientation = [self getThreadSafeOrientation];
+ #endif
+ }
+ 
++/// Get the current orientation with main thread check.
++///
++/// - Returns: The UIDeviceOrientation value, ensuring thread-safe access.
++///
++- (UIDeviceOrientation)getThreadSafeOrientation {
++    __block UIDeviceOrientation orientation;
++    
++    if ([NSThread isMainThread]) {
++        orientation = [self getOrientation];
++    } else {
++        dispatch_sync(dispatch_get_main_queue(), ^{
++            orientation = [self getOrientation];
++        });
++    }
++    
++    return orientation;
++}
++
++/// Get the current orientation of the device.
++///
++/// - Returns: The UIDeviceOrientation value based on the current interface orientation.
++///
++- (UIDeviceOrientation)getOrientation {
++    if (@available(iOS 15.0, *)) {
++        UIScene * scene = [[[[UIApplication sharedApplication] connectedScenes] allObjects] firstObject];
++
++        if ([scene.delegate conformsToProtocol:@protocol(UIWindowSceneDelegate)]){
++            UIWindow * window = [(id <UIWindowSceneDelegate>)scene.delegate window];
++            UIWindowScene * windowScene = window.windowScene;
++            UIInterfaceOrientation interfaceOrientation = windowScene.interfaceOrientation;
++            
++            return [self getOrientation:interfaceOrientation];
++        }
++    }
++    return [[UIDevice currentDevice] orientation];
++}
++
++/// Convert UIInterfaceOrientation value into UIDeviceOrientation value
++///
++/// - Parameters:
++///   - orientation: UIInterfaceOrientation value,
++///
++/// - Returns: UIDeviceOrientation value.
++///
++- (UIDeviceOrientation)getOrientation:(UIInterfaceOrientation)orientation {
++    switch (orientation) {
++        case UIInterfaceOrientationLandscapeLeft:
++            return UIDeviceOrientationLandscapeRight;
++        case UIInterfaceOrientationLandscapeRight:
++            return UIDeviceOrientationLandscapeLeft;
++        case UIInterfaceOrientationPortrait:
++            return UIDeviceOrientationPortrait;
++        case UIInterfaceOrientationPortraitUpsideDown:
++            return UIDeviceOrientationPortraitUpsideDown;
++        default:
++            return UIDeviceOrientationPortrait;
++    }
++}
++
+ @end

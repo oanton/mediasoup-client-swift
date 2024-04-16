@@ -165,6 +165,7 @@ function patchWebRTC() {
 	patch -b -p0 -d $WORK_DIR < $PATCHES_DIR/objc_video_encoder_factory_mm.patch
 	patch -b -p0 -d $WORK_DIR < $PATCHES_DIR/video_decoder_factory_h.patch
 	patch -b -p0 -d $WORK_DIR < $PATCHES_DIR/video_encoder_factory_h.patch
+	patch -b -p0 -d $WORK_DIR < $PATCHES_DIR/RTCCameraVideoCapturer.patch
 }
 
 # WebRTC sources are downloaded by git client from Depot tools.
