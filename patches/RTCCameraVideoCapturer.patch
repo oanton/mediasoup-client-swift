@@ -8,18 +8,7 @@
  
  #import "RTCMacros.h"
  #import "RTCVideoCapturer.h"
-@@ -33,6 +34,10 @@ NS_EXTENSION_UNAVAILABLE_IOS("Camera not available in app extensions.")
- // Returns the most efficient supported output pixel format for this capturer.
- - (FourCharCode)preferredOutputPixelFormat;
- 
-+- (instancetype)initWithDelegate:(__weak id<RTC_OBJC_TYPE(RTCVideoCapturerDelegate)>)delegate
-+               deviceOrientation:(UIDeviceOrientation)deviceOrientation
-+            interfaceOrientation:(UIInterfaceOrientation)interfaceOrientation;
-+
- // Starts the capture session asynchronously and notifies callback on completion.
- // The device will capture video in the format given in the `format` parameter. If the pixel format
- // in `format` is supported by the WebRTC pipeline, the same pixel format will be used for the
-@@ -51,6 +56,20 @@ NS_EXTENSION_UNAVAILABLE_IOS("Camera not available in app extensions.")
+@@ -51,6 +52,20 @@ NS_EXTENSION_UNAVAILABLE_IOS("Camera not available in app extensions.")
  // Stops the capture session asynchronously.
  - (void)stopCapture;
  
@@ -42,59 +31,24 @@
  NS_ASSUME_NONNULL_END
 --- webrtc/src/sdk/objc/components/capturer/RTCCameraVideoCapturer.m
 +++ webrtc/src/sdk/objc/components/capturer/RTCCameraVideoCapturer.m
-@@ -55,15 +55,25 @@ const int64_t kNanosecondsPerSecond = 1000000000;
- @synthesize willBeRunning = _willBeRunning;
- 
- - (instancetype)init {
--  return [self initWithDelegate:nil captureSession:[[AVCaptureSession alloc] init]];
-+  return [self initWithDelegate:nil
-+              deviceOrientation:nil
-+           interfaceOrientation:nil
-+                 captureSession:[[AVCaptureSession alloc] init]];
- }
- 
--- (instancetype)initWithDelegate:(__weak id<RTC_OBJC_TYPE(RTCVideoCapturerDelegate)>)delegate {
--  return [self initWithDelegate:delegate captureSession:[[AVCaptureSession alloc] init]];
-+- (instancetype)initWithDelegate:(__weak id<RTC_OBJC_TYPE(RTCVideoCapturerDelegate)>)delegate
-+               deviceOrientation:(UIDeviceOrientation)deviceOrientation
-+            interfaceOrientation:(UIInterfaceOrientation)interfaceOrientation{
-+    return [self initWithDelegate:delegate
-+                deviceOrientation:deviceOrientation
-+             interfaceOrientation:interfaceOrientation
-+                   captureSession:[[AVCaptureSession alloc] init]];
- }
- 
- // This initializer is used for testing.
- - (instancetype)initWithDelegate:(__weak id<RTC_OBJC_TYPE(RTCVideoCapturerDelegate)>)delegate
-+               deviceOrientation:(UIDeviceOrientation)deviceOrientation
-+            interfaceOrientation:(UIInterfaceOrientation)interfaceOrientation
-                   captureSession:(AVCaptureSession *)captureSession {
-   if (self = [super initWithDelegate:delegate]) {
-     // Create the capture session and all relevant inputs and outputs. We need
-@@ -75,7 +85,13 @@ const int64_t kNanosecondsPerSecond = 1000000000;
+@@ -75,7 +75,7 @@ const int64_t kNanosecondsPerSecond = 1000000000;
      }
      NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
  #if TARGET_OS_IPHONE
 -    _orientation = UIDeviceOrientationPortrait;
-+    if (deviceOrientation != nil) {
-+        _orientation = deviceOrientation;
-+    } else if (interfaceOrientation != nil) {
-+        _orientation = [self getOrientation:interfaceOrientation];
-+    } else {
-+        _orientation = [self getThreadSafeOrientation];
-+    }
++    _orientation = [self getThreadSafeOrientation];
      _rotation = RTCVideoRotation_90;
      [center addObserver:self
                 selector:@selector(deviceOrientationDidChange:)
-@@ -523,8 +539,98 @@ const int64_t kNanosecondsPerSecond = 1000000000;
+@@ -523,7 +523,105 @@ const int64_t kNanosecondsPerSecond = 1000000000;
    NSAssert([RTC_OBJC_TYPE(RTCDispatcher) isOnQueueForType:RTCDispatcherTypeCaptureSession],
             @"updateOrientation must be called on the capture queue.");
  #if TARGET_OS_IPHONE
 -  _orientation = [UIDevice currentDevice].orientation;
 +  _orientation = [self getThreadSafeOrientation];
- #endif
- }
- 
++#endif
++}
++
 +/// Get the current orientation with main thread check.
 +///
 +/// - Returns: The UIDeviceOrientation value, ensuring thread-safe access.
@@ -169,7 +123,7 @@
 +- (void) changeDeviceOrientation:(UIDeviceOrientation)deviceOrientation {
 +    [RTC_OBJC_TYPE(RTCDispatcher) dispatchAsyncOnType:RTCDispatcherTypeCaptureSession
 +                                                block:^{
-+        _orientation = deviceOrientation;
++        [self setOrientation: deviceOrientation];
 +    }];
 +}
 +
@@ -181,9 +135,14 @@
 +- (void) changeInterfaceOrientation:(UIInterfaceOrientation)interfaceOrientation {
 +    [RTC_OBJC_TYPE(RTCDispatcher) dispatchAsyncOnType:RTCDispatcherTypeCaptureSession
 +                                                block:^{
-+        _orientation = [self getOrientation:interfaceOrientation];
++        [self setOrientation: [self getOrientation:interfaceOrientation]];
 +    }];
 +}
 +
- @end
-
++- (void)setOrientation:(UIDeviceOrientation)deviceOrientation {
++  NSAssert([RTC_OBJC_TYPE(RTCDispatcher) isOnQueueForType:RTCDispatcherTypeCaptureSession],
++           @"updateOrientation must be called on the capture queue.");
++#if TARGET_OS_IPHONE
++  _orientation = deviceOrientation;
+ #endif
+ }
